@@ -1,3 +1,4 @@
+# ticket config.py
 data = {
     "fare": "운임/기본요금",
     "airTax": "공항세",
