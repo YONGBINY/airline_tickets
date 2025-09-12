@@ -53,12 +53,15 @@ def generate_dates(start: str, end: str) -> list:
         current += timedelta(days=1)
     return dates
 
-DEP_DATES = generate_dates("20251001", "20251030")
+DEP_DATES = generate_dates("20251005", "20251005")
 # print(f"생성된 날짜 개수: {len(DEP_DATES)}")
 # print(f"첫 5개 날짜: {DEP_DATES[:5]}")
 # print(f"마지막 5개 날짜: {DEP_DATES[-5:]}")
 
-DEPARTURES = ["GMP", "CJJ", "TAE", "RSU"]
-ARRIVALS = ["CJU"]
+DEPARTURES = list(AIRPORTS.keys())
+ARRIVALS = list(AIRPORTS.keys())
 AGENT_CODES = list(AGENTS.keys())
 CABIN_CLASS = "A"
+
+print(DEPARTURES)
+print(ARRIVALS)
