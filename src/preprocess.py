@@ -4,9 +4,14 @@ import json
 import glob
 import pandas as pd
 
-JSON_ROOT_DIR = "../data/raw"
+from src.common.logging_setup import setup_logging
+from src.common.paths import RAW_DIR, PROCESSED_DIR
+logger = setup_logging(__name__)
+
+JSON_ROOT_DIR = RAW_DIR
 
 def run_preprocess(save_csv=True):
+    logger.info("전처리 시작")
     json_files = glob.glob(os.path.join(JSON_ROOT_DIR, "**", "*.json"), recursive=True)
     print(f"📁 처리할 파일 수: {len(json_files)}")
 
@@ -193,10 +198,10 @@ def run_preprocess(save_csv=True):
     df = df[column_order]
 
     if save_csv:
-        output_path = "../data/processed/preprocessing data.csv"
+        output_path = PROCESSED_DIR/"preprocessing data.csv"
         df.to_csv(output_path, index=False, encoding="utf-8-sig")
         print(f"💾 CSV 저장 완료: {output_path}")
-
+    logger.info("전처리 완료")
     return df
 
 if __name__ == "__main__":

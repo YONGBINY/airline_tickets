@@ -1,23 +1,17 @@
-# upload_tmp.py
-import logging
+# upload.py
+import os
 from typing import Dict, Iterable, List
-
 import pandas as pd
 from sqlalchemy import create_engine
 from psycopg2.extras import execute_values
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "database": "airline_tickets",
-    "user": "postgres",
-    "password": "qkrdydqls12!"
-}
+from src.common.logging_setup import setup_logging
+from src.common.paths import PROCESSED_DIR
+from src.common.config import DB_CONFIG
 
-# 테이블 컬럼 순서 (CSV/DF 모두 이 순서로 맞춰 삽입)
+logger = setup_logging(__name__)
+
 TARGET_COLUMNS: List[str] = [
     "agency_code", "code",
     "depDate", "depDay", "depTime", "depCity", "depDesc",
@@ -132,39 +126,31 @@ def upload_to_db(df: pd.DataFrame, engine, batch_size: int = 5000):
                 logger.info(f"✅ {start + len(batch)}/{total_rows}행 업로드 완료")
             except Exception as e:
                 raw_conn.rollback()
-                logger.error(f"❌ 배치 업로드 실패 @ {start}: {e}")
+                logger.error(f"❌ 배치 업로드 실패 @ {start}: {e}", exc_info=True)
                 raise
 
     logger.info("🎉 전체 업로드 완료")
 
 
-def run_upload(df: pd.DataFrame, db_config: Dict = DB_CONFIG, batch_size: int = 5000):
-    """
-    preprocess에서 반환된 DataFrame을 직접 받아 업로드
-    """
+def run_upload(df: pd.DataFrame, batch_size: int = 5000):
+    logger.info("DB 업로드 시작")
     if df is None or df.empty:
         logger.warning("⚠️ 입력 DataFrame이 비어있습니다. 업로드 중단.")
         return
 
-    # 업로드 전 정리
     df_prepared = prepare_df_for_upload(df)
-
-    # 엔진 생성
-    engine = get_engine(db_config)
+    engine = get_engine(DB_CONFIG)
     logger.info("✅ DB 연결 성공")
-
-    # 업로드
     upload_to_db(df_prepared, engine, batch_size=batch_size)
+    logger.info("DB 업로드 완료")
 
-
-# 유연성을 위해 CSV로부터 직접 업로드하는 유틸 (옵션)
-def run_upload_from_csv(csv_path: str, db_config: Dict = DB_CONFIG, batch_size: int = 5000):
+def run_upload_from_csv(csv_path: str, batch_size: int = 5000):
     df = pd.read_csv(csv_path, encoding="utf-8-sig")
     logger.info(f"✅ CSV 로드 완료: {len(df)}행 from {csv_path}")
-    run_upload(df, db_config=db_config, batch_size=batch_size)
+    run_upload(df, batch_size=batch_size)
 
 
 if __name__ == "__main__":
     # 필요시 수동 테스트용 (CSV 경로를 넣어 사용)
-    run_upload_from_csv("../data/processed/preprocessing data.csv")
+    run_upload_from_csv(PROCESSED_DIR/"preprocessing data.csv")
     pass

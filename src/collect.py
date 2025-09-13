@@ -9,7 +9,9 @@ from selenium.webdriver.edge.service import Service
 from selenium.webdriver.edge.options import Options
 
 from requirements.config import DEPARTURES, ARRIVALS, DEP_DATES, AGENT_CODES, PASSENGERS, CABIN_CLASS, AGENTS
-from requirements.fields import calculate_total
+from src.common.logging_setup import setup_logging
+from src.common.paths import RAW_DIR
+logger = setup_logging(__name__)
 
 #-------------------------------------- 1. 설정
 DRIVER_PATH = r"D:\Users\bin\PycharmProjects\airline_tickets\requirements\edgedriver_win64\msedgedriver.exe"
@@ -17,7 +19,7 @@ BASE_URL = "https://www.airport.co.kr"
 API_URL = f"{BASE_URL}/booking/ajaxf/frAirticketSvc/getData.do"
 TARGET_URL = f"{BASE_URL}/booking/cms/frCon/index.do?MENU_ID=80"
 
-ROOT_OUTPUT_DIR = "../data/raw"
+ROOT_OUTPUT_DIR = RAW_DIR
 os.makedirs(ROOT_OUTPUT_DIR, exist_ok=True)
 
 #-------------------------------------- 2. Edge 옵션
@@ -127,6 +129,7 @@ def search_flights(cookies, pDep, pArr, pDepDate, pAdt, pChd, pInf, pSeat, comp,
 
 #-------------------------------------- 5. 메인 실행
 def run_collect():
+    logger.info("데이터 수집 시작")
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 항공권 수집 시작")
 
     # ✅ 쿠키 획득
@@ -179,6 +182,7 @@ def run_collect():
 
     elapsed = time.time() - start_time
     print(f"\n🎉 전체 수집 완료: {processed}/{total_combinations} 요청 완료 | 소요 시간: {elapsed:.1f}초")
+    logger.info("데이터 수집 완료")
 
 if __name__ == "__main__":
     run_collect()
