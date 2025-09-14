@@ -1,16 +1,18 @@
 # collect.py
+
 import os
 import time
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.edge.service import Service
 from selenium.webdriver.edge.options import Options
 
-from requirements.config import DEPARTURES, ARRIVALS, DEP_DATES, AGENT_CODES, PASSENGERS, CABIN_CLASS, AGENTS
+from requirements.config import DEPARTURES, ARRIVALS, AGENT_CODES, PASSENGERS, CABIN_CLASS, AGENTS
 from src.common.logging_setup import setup_logging
 from src.common.paths import RAW_DIR
+
 logger = setup_logging(__name__)
 
 #-------------------------------------- 1. 설정
@@ -54,6 +56,15 @@ def get_cookies():
         if driver:
             driver.quit()
 
+#-------------------------------------- 날짜 리스트 생성
+def generate_dates(start_date, end_date):
+    dates = []
+    current = start_date
+    while current <= end_date:
+        dates.append(current.strftime("%Y%m%d"))
+        current += timedelta(days=1)
+    return dates
+
 #-------------------------------------- 4. 항공권 조회 및 저장
 def search_flights(cookies, pDep, pArr, pDepDate, pAdt, pChd, pInf, pSeat, comp, base_output_dir):
     headers = {
@@ -83,9 +94,8 @@ def search_flights(cookies, pDep, pArr, pDepDate, pAdt, pChd, pInf, pSeat, comp,
     session.headers.update(headers)
 
     try:
-        print(f"\n🔍 요청: {pDep} → {pArr}, {pDepDate}, {AGENTS.get(comp, comp)}")
+        logger.info(f"요청: {pDep} → {pArr}, {pDepDate}, {AGENTS.get(comp, comp)}")
         response = session.post(API_URL, data=payload, timeout=15)
-        print(f"📊 상태 코드: {response.status_code}")
 
         if response.status_code == 200:
             try:
@@ -111,49 +121,37 @@ def search_flights(cookies, pDep, pArr, pDepDate, pAdt, pChd, pInf, pSeat, comp,
                 header = result.get("data", {}).get("header", {})
                 cnt = header.get("cnt", 0)
                 error = header.get("errorDesc", "") if header.get("errorCode") != "0" else "정상"
-                print(f"✅ 저장 완료: {filepath} | 응답: {error} | 편수: {cnt}")
+                logger.info(f"저장 완료: {filepath} | 응답: {error} | 편수: {cnt}")
 
             except json.JSONDecodeError:
-                print("❌ 응답이 JSON 형식이 아님")
-                print(response.text[:500])
+                logger.error("응답이 JSON 형식이 아님")
             except Exception as e:
-                print(f"❌ 파일 저장 실패: {e}")
+                logger.error(f"파일 저장 실패: {e}")
         else:
-            print(f"❌ 요청 실패: {response.status_code}")
-            print(response.text[:500])
+            logger.error(f"요청 실패: {response.status_code}")
 
     except requests.exceptions.RequestException as e:
-        print(f"❌ 요청 중 오류: {e}")
+        logger.error(f"요청 중 오류: {e}")
     except Exception as e:
-        print(f"❌ 예상치 못한 오류: {e}")
+        logger.error(f"예상치 못한 오류: {e}")
 
 #-------------------------------------- 5. 메인 실행
-def run_collect():
+def run_collect(start_date, end_date):
     logger.info("데이터 수집 시작")
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 항공권 수집 시작")
 
-    # ✅ 쿠키 획득
     cookies = get_cookies()
     if not cookies:
-        print("❌ 쿠키 획득 실패, 프로그램 종료")
+        logger.error("쿠키 획득 실패, 프로그램 종료")
         return
 
     # ✅ 수집 루트 폴더
     base_output_path = os.path.join(ROOT_OUTPUT_DIR)
     os.makedirs(base_output_path, exist_ok=True)
-    print(f"📁 모든 데이터는 '{base_output_path}' 아래에 저장됩니다.")
 
-    # ✅ 조회 조합 계산
-    total_combinations = 0
-    for dep in DEPARTURES:
-        for arr in ARRIVALS:
-            if dep == arr:
-                continue
-            total_combinations += len(DEP_DATES) * len(AGENT_CODES)
+    dep_dates = generate_dates(start_date, end_date)
+    total_combinations = len(DEPARTURES) * len(ARRIVALS) * len(dep_dates) * len(AGENT_CODES)
 
-    print(f"🔍 총 {len(DEPARTURES)}개 출발지, {len(ARRIVALS)}개 도착지, {len(DEP_DATES)}일, {len(AGENT_CODES)}개 여행사")
-    print(f"📈 예상 요청 수: {total_combinations}건")
-    print("-" * 60)
+    logger.info(f"총 요청 수 예상: {total_combinations}건")
 
     # ✅ 반복 조회
     processed = 0
@@ -163,7 +161,7 @@ def run_collect():
         for arr in ARRIVALS:
             if dep == arr:
                 continue
-            for date in DEP_DATES:
+            for date in dep_dates:
                 for agent in AGENT_CODES:
                     processed += 1
                     search_flights(
@@ -178,11 +176,10 @@ def run_collect():
                         comp=agent,
                         base_output_dir=base_output_path
                     )
-                    time.sleep(1)  # 서버 보호
+                    time.sleep(1)
 
-    elapsed = time.time() - start_time
-    print(f"\n🎉 전체 수집 완료: {processed}/{total_combinations} 요청 완료 | 소요 시간: {elapsed:.1f}초")
-    logger.info("데이터 수집 완료")
+        elapsed = time.time() - start_time
+        logger.info(f"전체 수집 완료: {processed}/{total_combinations} 요청 | 소요 시간: {elapsed:.1f}초")
 
-if __name__ == "__main__":
-    run_collect()
+    if __name__ == "__main__":
+        run_collect(datetime(2025, 9, 1).date(), datetime(2025, 9, 5).date())
