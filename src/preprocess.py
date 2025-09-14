@@ -3,6 +3,7 @@ import os
 import json
 import glob
 import pandas as pd
+from datetime import datetime
 
 from src.common.logging_setup import setup_logging
 from src.common.paths import RAW_DIR, PROCESSED_DIR
@@ -18,7 +19,13 @@ def run_preprocess(save_csv=True):
     ##-----------------------------------------def_scraped_date
     def extract_scraped_date(path):
         parts = path.split(os.sep)
-        return parts[1]
+        try:
+            idx = parts.index("raw")
+            date_str = parts[idx + 1]
+            datetime.strptime(date_str, "%Y-%m-%d")
+            return date_str
+        except (ValueError, IndexError):
+            return None
 
     ##-----------------------------------------def_agency_code
     def extract_agency_code(path):
