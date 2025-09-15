@@ -1,30 +1,31 @@
 # collect.py
-
 import os
 import time
 import json
-import requests
+import asyncio
+import aiohttp
 from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.edge.service import Service
 from selenium.webdriver.edge.options import Options
 
+# requirements.config와 로깅 설정은 기존과 동일하다고 가정합니다.
 from requirements.config import DEPARTURES, ARRIVALS, AGENT_CODES, PASSENGERS, CABIN_CLASS, AGENTS
 from src.common.logging_setup import setup_logging
 from src.common.paths import RAW_DIR
 
 logger = setup_logging(__name__)
 
-#-------------------------------------- 1. 설정
+# ---------------------------------- 1. 설정 (기존과 동일)
 DRIVER_PATH = r"D:\Users\bin\PycharmProjects\airline_tickets\requirements\edgedriver_win64\msedgedriver.exe"
 BASE_URL = "https://www.airport.co.kr"
 API_URL = f"{BASE_URL}/booking/ajaxf/frAirticketSvc/getData.do"
 TARGET_URL = f"{BASE_URL}/booking/cms/frCon/index.do?MENU_ID=80"
-
 ROOT_OUTPUT_DIR = RAW_DIR
 os.makedirs(ROOT_OUTPUT_DIR, exist_ok=True)
 
-#-------------------------------------- 2. Edge 옵션
+
+# ---------------------------------- 2. Selenium 관련 함수 (기존과 동일)
 def create_edge_options():
     options = Options()
     options.add_argument("--headless")
@@ -38,7 +39,7 @@ def create_edge_options():
     )
     return options
 
-#-------------------------------------- 3. 쿠키 획득
+
 def get_cookies():
     service = Service(DRIVER_PATH)
     driver = None
@@ -47,16 +48,17 @@ def get_cookies():
         driver.get(TARGET_URL)
         time.sleep(3)
         cookies = {c["name"]: c["value"] for c in driver.get_cookies()}
-        print(f"✅ 쿠키 {len(cookies)}개 획득 완료")
+        logger.info(f"✅ 쿠키 {len(cookies)}개 획득 완료")
         return cookies
     except Exception as e:
-        print(f"❌ 쿠키 획득 실패: {e}")
+        logger.error(f"❌ 쿠키 획득 실패: {e}")
         return {}
     finally:
         if driver:
             driver.quit()
 
-#-------------------------------------- 날짜 리스트 생성
+
+# ---------------------------------- 3. 날짜 리스트 생성 (기존과 동일)
 def generate_dates(start_date, end_date):
     dates = []
     current = start_date
@@ -65,121 +67,116 @@ def generate_dates(start_date, end_date):
         current += timedelta(days=1)
     return dates
 
-#-------------------------------------- 4. 항공권 조회 및 저장
-def search_flights(cookies, pDep, pArr, pDepDate, pAdt, pChd, pInf, pSeat, comp, base_output_dir):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Referer": TARGET_URL,
-        "Origin": BASE_URL,
-        "X-Requested-With": "XMLHttpRequest"
-    }
 
-    payload = {
-        "pDep": pDep,
-        "pArr": pArr,
-        "pDepDate": pDepDate,
-        "pArrDate": "",
-        "pAdt": pAdt,
-        "pChd": pChd,
-        "pInf": pInf,
-        "pSeat": pSeat,
-        "comp": comp,
-        "carCode": "ALL"  # ✅ YB2 등 여행사 조회에 필수
-    }
+# ---------------------------------- 4. ✨ 비동기 항공권 조회 및 저장
+async def search_flight_async(session, semaphore, params):
+    MAX_RETRIES = 3
+    BASE_DELAY = 2
+    pDep, pArr, pDepDate, comp = params["pDep"], params["pArr"], params["pDepDate"], params["comp"]
 
-    session = requests.Session()
-    session.cookies.update(cookies)
-    session.headers.update(headers)
-
-    try:
-        logger.info(f"요청: {pDep} → {pArr}, {pDepDate}, {AGENTS.get(comp, comp)}")
-        response = session.post(API_URL, data=payload, timeout=15)
-
-        if response.status_code == 200:
+    for attempt in range(MAX_RETRIES):
+        async with semaphore:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Referer": TARGET_URL
+            }
             try:
-                result = response.json()
+                if attempt > 0:
+                    logger.warning(f"재시도 ({attempt + 1}/{MAX_RETRIES}): {pDep}→{pArr}, {pDepDate}, {comp}")
+                else:
+                    logger.info(f"요청 시작: {pDep}→{pArr}, {pDepDate}, {AGENTS.get(comp, comp)}")
 
-                # ✅ 저장 구조: flight information/[수집일자]/[운항일자]/GMP_PUS_20250901_JD.json
-                acquisition_date = datetime.now().strftime("%Y-%m-%d")
-                collection_dir = os.path.join(base_output_dir, acquisition_date)
-                flight_date_dir = os.path.join(collection_dir, pDepDate)
-                os.makedirs(flight_date_dir, exist_ok=True)
+                async with session.post(API_URL, data=params, headers=headers, timeout=20) as response:
+                    if response.status == 200:
+                        result = await response.json(content_type=None)
 
-                # 파일명 생성 (특수문자 제거)
-                safe_dep = pDep.replace("/", "_").replace("\\", "_")
-                safe_arr = pArr.replace("/", "_").replace("\\", "_")
-                safe_comp = comp.replace("/", "_").replace("\\", "_")
-                filename = f"{safe_dep}_{safe_arr}_{pDepDate}_{safe_comp}.json"
-                filepath = os.path.join(flight_date_dir, filename)
+                        if attempt > 0:
+                            logger.info(f"✅ 재시도 성공: {pDep}→{pArr}, {pDepDate}, {comp}")
 
-                # 저장
-                with open(filepath, "w", encoding="utf-8") as f:
-                    json.dump(result, f, ensure_ascii=False, indent=4)
+                        acquisition_date = datetime.now().strftime("%Y-%m-%d")
+                        collection_dir = os.path.join(params["base_output_dir"], acquisition_date)
+                        flight_date_dir = os.path.join(collection_dir, pDepDate)
+                        os.makedirs(flight_date_dir, exist_ok=True)
 
-                header = result.get("data", {}).get("header", {})
-                cnt = header.get("cnt", 0)
-                error = header.get("errorDesc", "") if header.get("errorCode") != "0" else "정상"
-                logger.info(f"저장 완료: {filepath} | 응답: {error} | 편수: {cnt}")
+                        filename = f"{pDep}_{pArr}_{pDepDate}_{comp}.json"
+                        filepath = os.path.join(flight_date_dir, filename)
 
-            except json.JSONDecodeError:
-                logger.error("응답이 JSON 형식이 아님")
-            except Exception as e:
-                logger.error(f"파일 저장 실패: {e}")
-        else:
-            logger.error(f"요청 실패: {response.status_code}")
+                        with open(filepath, "w", encoding="utf-8") as f:
+                            json.dump(result, f, ensure_ascii=False, indent=4)
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"요청 중 오류: {e}")
-    except Exception as e:
-        logger.error(f"예상치 못한 오류: {e}")
+                        header = result.get("data", {}).get("header", {})
+                        cnt = header.get("cnt", 0)
+                        error = header.get("errorDesc", "") if header.get("errorCode") != "0" else "정상"
 
-#-------------------------------------- 5. 메인 실행
-def run_collect(start_date, end_date):
-    logger.info("데이터 수집 시작")
+                        logger.info(f"저장 완료: {pDep}→{pArr}, {pDepDate}, {AGENTS.get(comp, comp)} | 편수: {cnt}")
+                        return True # ✨ 성공하면 함수 종료
+                    else:
+                        logger.error(f"요청 실패 ({response.status}): {pDep}→{pArr}, {pDepDate}, {comp}")
+            except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+                logger.error(f"오류 발생 ({pDep}→{pArr}, {pDepDate}, {comp}): {e}")
+            if attempt < MAX_RETRIES - 1:
+                delay = BASE_DELAY * (2 ** attempt)
+                logger.warning(f"{delay}초 후 재시도합니다...")
+                await asyncio.sleep(delay)
+    logger.critical(f"최종 실패: {pDep}→{pArr}, {pDepDate}, {comp}")
+
+
+# ---------------------------------- 5. ✨ 메인 실행 함수 (수정됨)
+async def run_collect_async(start_date, end_date):
+    logger.info("비동기 데이터 수집 시작")
 
     cookies = get_cookies()
     if not cookies:
         logger.error("쿠키 획득 실패, 프로그램 종료")
         return
 
-    # ✅ 수집 루트 폴더
     base_output_path = os.path.join(ROOT_OUTPUT_DIR)
     os.makedirs(base_output_path, exist_ok=True)
-
     dep_dates = generate_dates(start_date, end_date)
-    total_combinations = len(DEPARTURES) * len(ARRIVALS) * len(dep_dates) * len(AGENT_CODES)
 
-    logger.info(f"총 요청 수 예상: {total_combinations}건")
-
-    # ✅ 반복 조회
-    processed = 0
-    start_time = time.time()
-
+    # --- 1. 모든 요청 조합을 미리 생성 ---
+    tasks_params = []
     for dep in DEPARTURES:
         for arr in ARRIVALS:
-            if dep == arr:
-                continue
+            if dep == arr: continue
             for date in dep_dates:
                 for agent in AGENT_CODES:
-                    processed += 1
-                    search_flights(
-                        cookies=cookies,
-                        pDep=dep,
-                        pArr=arr,
-                        pDepDate=date,
-                        pAdt=str(PASSENGERS["adult"]),
-                        pChd=str(PASSENGERS["child"]),
-                        pInf=str(PASSENGERS["infant"]),
-                        pSeat=CABIN_CLASS,
-                        comp=agent,
-                        base_output_dir=base_output_path
-                    )
-                    time.sleep(1)
+                    payload = {
+                        "pDep": dep, "pArr": arr, "pDepDate": date,
+                        "pAdt": str(PASSENGERS["adult"]), "pChd": str(PASSENGERS["child"]),
+                        "pInf": str(PASSENGERS["infant"]), "pSeat": CABIN_CLASS, "comp": agent,
+                        "carCode": "ALL", "base_output_dir": base_output_path, "pArrDate": ""
+                    }
+                    tasks_params.append(payload)
 
-        elapsed = time.time() - start_time
-        logger.info(f"전체 수집 완료: {processed}/{total_combinations} 요청 | 소요 시간: {elapsed:.1f}초")
+    logger.info(f"총 요청 수: {len(tasks_params)}건")
 
-    if __name__ == "__main__":
-        run_collect(datetime(2025, 9, 1).date(), datetime(2025, 9, 5).date())
+    # --- 2. 비동기 작업 실행 ---
+    start_time = time.time()
+
+    semaphore = asyncio.Semaphore(10)
+
+    async with aiohttp.ClientSession(cookies=cookies) as session:
+        tasks = [search_flight_async(session, semaphore, params) for params in tasks_params]
+        results = await asyncio.gather(*tasks)
+
+    elapsed = time.time() - start_time
+
+    # --- 👇 [추가] 최종 결과 요약 로그 ---
+    success_count = sum(1 for r in results if r is True)
+    failure_count = len(tasks_params) - success_count
+
+    logger.info("=" * 50)
+    logger.info("📊 전체 수집 결과 요약")
+    logger.info(f"  - 총 요청 수: {len(tasks_params)} 건")
+    logger.info(f"  - ✅ 성공: {success_count} 건")
+    logger.info(f"  - ❌ 실패: {failure_count} 건")
+    logger.info(f"  - ⏱️ 총 소요 시간: {elapsed:.2f} 초")
+    logger.info("=" * 50)
+
+# ---------------------------------- 실행
+if __name__ == "__main__":
+    start_dt = datetime(2025, 10, 7).date()
+    end_dt = datetime(2025, 10, 7).date()
+    asyncio.run(run_collect_async(start_dt, end_dt))
