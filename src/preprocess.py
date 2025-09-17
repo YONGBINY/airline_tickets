@@ -3,7 +3,7 @@ import os
 import json
 import glob
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 
 from src.common.logging_setup import setup_logging
 from src.common.paths import RAW_DIR, PROCESSED_DIR
@@ -13,7 +13,16 @@ JSON_ROOT_DIR = RAW_DIR
 
 def run_preprocess(save_csv=True):
     logger.info("전처리 시작")
-    json_files = glob.glob(os.path.join(JSON_ROOT_DIR, "**", "*.json"), recursive=True)
+
+    today_str = date.today().strftime("%Y-%m-%d")
+    today_dir = os.path.join(JSON_ROOT_DIR, today_str)
+
+    if not os.path.exists(today_dir):
+        logger.warning(f"오늘 날짜 폴더({today_dir})가 없습니다. 전체 데이터 처리로 전환합니다.")
+        json_files = glob.glob(os.path.join(JSON_ROOT_DIR, "**", "*.json"), recursive=True)
+    else:
+        json_files = glob.glob(os.path.join(today_dir, "**", "*.json"), recursive=True)
+
     print(f"📁 처리할 파일 수: {len(json_files)}")
 
     ##-----------------------------------------def_scraped_date
