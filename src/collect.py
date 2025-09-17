@@ -110,7 +110,7 @@ async def search_flight_async(session, semaphore, params):
                         error = header.get("errorDesc", "") if header.get("errorCode") != "0" else "정상"
 
                         logger.info(f"저장 완료: {pDep}→{pArr}, {pDepDate}, {AGENTS.get(comp, comp)} | 편수: {cnt}")
-                        return True # ✨ 성공하면 함수 종료
+                        return filepath
                     else:
                         logger.error(f"요청 실패 ({response.status}): {pDep}→{pArr}, {pDepDate}, {comp}")
             except (asyncio.TimeoutError, aiohttp.ClientError) as e:
@@ -119,8 +119,9 @@ async def search_flight_async(session, semaphore, params):
                 delay = BASE_DELAY * (2 ** attempt)
                 logger.warning(f"{delay}초 후 재시도합니다...")
                 await asyncio.sleep(delay)
-    logger.critical(f"최종 실패: {pDep}→{pArr}, {pDepDate}, {comp}")
 
+    logger.critical(f"최종 실패: {pDep}→{pArr}, {pDepDate}, {comp}")
+    return None
 
 # ---------------------------------- 5. ✨ 메인 실행 함수 (수정됨)
 async def run_collect_async(start_date, end_date):
@@ -164,7 +165,9 @@ async def run_collect_async(start_date, end_date):
     elapsed = time.time() - start_time
 
     # --- 👇 [추가] 최종 결과 요약 로그 ---
-    success_count = sum(1 for r in results if r is True)
+    saved_files = [r for r in results if isinstance(r, str)]
+    saved_count = len(saved_files)
+    success_count = sum(1 for r in results if isinstance(r, str))
     failure_count = len(tasks_params) - success_count
 
     logger.info("=" * 50)
@@ -172,11 +175,12 @@ async def run_collect_async(start_date, end_date):
     logger.info(f"  - 총 요청 수: {len(tasks_params)} 건")
     logger.info(f"  - ✅ 성공: {success_count} 건")
     logger.info(f"  - ❌ 실패: {failure_count} 건")
+    logger.info(f"  - 💾 저장된 JSON 파일 수: {saved_count} 건")
     logger.info(f"  - ⏱️ 총 소요 시간: {elapsed:.2f} 초")
     logger.info("=" * 50)
 
 # ---------------------------------- 실행
 if __name__ == "__main__":
-    start_dt = datetime(2025, 10, 7).date()
-    end_dt = datetime(2025, 10, 7).date()
+    start_dt = datetime(2025, 10, 20).date()
+    end_dt = datetime(2025, 10, 20).date()
     asyncio.run(run_collect_async(start_dt, end_dt))

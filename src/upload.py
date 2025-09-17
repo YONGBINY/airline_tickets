@@ -151,6 +151,5 @@ def run_upload_from_csv(csv_path: str, batch_size: int = 5000):
 
 
 if __name__ == "__main__":
-    # 필요시 수동 테스트용 (CSV 경로를 넣어 사용)
     run_upload_from_csv(PROCESSED_DIR/"preprocessing data.csv")
     pass
