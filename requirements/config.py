@@ -1,4 +1,4 @@
-# config.py
+# requirements/config.py
 from datetime import datetime, timedelta
 
 AIRPORTS = {
@@ -63,5 +63,18 @@ ARRIVALS = list(AIRPORTS.keys())
 AGENT_CODES = list(AGENTS.keys())
 CABIN_CLASS = "A"
 
-print(DEPARTURES)
-print(ARRIVALS)
+# ✨ 유효 노선 맵 (출발지: [도착지...])
+ROUTE_MAP = {
+    "CJJ": ["CJU"],
+    "CJU": ["CJJ", "GMP", "HIN", "KPO", "KUV", "KWJ", "PUS", "RSU", "TAE", "USN", "WJU"],
+    "GMP": ["CJU", "HIN", "KPO", "KWJ", "PUS", "RSU", "USN"],
+    "HIN": ["CJU", "GMP"],
+    "KPO": ["CJU", "GMP"],
+    "KUV": ["CJU"],
+    "KWJ": ["CJU", "GMP"],
+    "PUS": ["CJU", "GMP"],
+    "RSU": ["CJU", "GMP"],
+    "TAE": ["CJU"],
+    "USN": ["CJU", "GMP"],
+    "WJU": ["CJU"]
+}
