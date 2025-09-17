@@ -19,8 +19,8 @@ def parse_yyyymmdd(value: str):
 
 async def run_pipeline(start_date, end_date, save_csv):
     click.secho(f"\n🚀 '{start_date}'부터 '{end_date}'까지의 데이터 파이프라인을 시작합니다.", fg="green")
-    await run_collect(start_date, end_date)
-    df = run_preprocess(save_csv=save_csv)
+    collected_data = await run_collect(start_date, end_date)
+    df = run_preprocess(collected_data=collected_data, save_csv=save_csv)
     if df is not None and not df.empty:
         logger.info(f"전처리 완료. {len(df)}건의 데이터를 업로드합니다.")
         run_upload(df)
@@ -39,8 +39,8 @@ def cli_main(start_date_str, end_date_str, save_csv):
     asyncio.run(run_pipeline(start_date, end_date, save_csv))
 
 def manual_run():
-    start_date = datetime(2025, 10, 20).date()
-    end_date = datetime(2025, 10, 20).date()
+    start_date = datetime(2025, 10, 26).date()
+    end_date = datetime(2025, 10, 26).date()
     save_csv = True
     logger.info(f"[수동 실행] 검색 범위: {start_date} ~ {end_date}, CSV 저장: {save_csv}")
     asyncio.run(run_pipeline(start_date, end_date, save_csv))
@@ -51,6 +51,3 @@ if __name__ == "__main__":
         cli_main()
     else:
         manual_run()
-
-## Run Terminal commands
-## python main.py --start-date [시작날짜] --end-date [끝날짜] --save-csv

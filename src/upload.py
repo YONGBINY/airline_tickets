@@ -32,7 +32,6 @@ def get_engine(db_config: Dict):
     )
     return create_engine(url, pool_pre_ping=True)
 
-
 def prepare_df_for_upload(df: pd.DataFrame) -> pd.DataFrame:
     """
     - 불필요 컬럼 삭제
@@ -84,11 +83,9 @@ def prepare_df_for_upload(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"✅ 업로드 준비 완료: {len(df)}행, 컬럼 {len(df.columns)}개")
     return df
 
-
 def to_tuples(df: pd.DataFrame) -> Iterable[tuple]:
     # 행 → 튜플 변환 (NaN → None)
     return (tuple(None if pd.isna(x) else x for x in row) for row in df.to_numpy())
-
 
 def upload_to_db(df: pd.DataFrame, engine, batch_size: int = 5000):
     """
@@ -130,7 +127,6 @@ def upload_to_db(df: pd.DataFrame, engine, batch_size: int = 5000):
                 raise
 
     logger.info("🎉 전체 업로드 완료")
-
 
 def run_upload(df: pd.DataFrame, batch_size: int = 5000):
     logger.info("DB 업로드 시작")

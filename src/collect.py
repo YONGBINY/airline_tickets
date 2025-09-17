@@ -39,7 +39,6 @@ def create_edge_options():
     )
     return options
 
-
 def get_cookies():
     service = Service(DRIVER_PATH)
     driver = None
@@ -57,7 +56,6 @@ def get_cookies():
         if driver:
             driver.quit()
 
-
 # ---------------------------------- 3. 날짜 리스트 생성 (기존과 동일)
 def generate_dates(start_date, end_date):
     dates = []
@@ -66,7 +64,6 @@ def generate_dates(start_date, end_date):
         dates.append(current.strftime("%Y%m%d"))
         current += timedelta(days=1)
     return dates
-
 
 # ---------------------------------- 4. ✨ 비동기 항공권 조회 및 저장
 async def search_flight_async(session, semaphore, params):
@@ -110,7 +107,7 @@ async def search_flight_async(session, semaphore, params):
                         error = header.get("errorDesc", "") if header.get("errorCode") != "0" else "정상"
 
                         logger.info(f"저장 완료: {pDep}→{pArr}, {pDepDate}, {AGENTS.get(comp, comp)} | 편수: {cnt}")
-                        return filepath
+                        return {"filepath": filepath, "raw_data": result}
                     else:
                         logger.error(f"요청 실패 ({response.status}): {pDep}→{pArr}, {pDepDate}, {comp}")
             except (asyncio.TimeoutError, aiohttp.ClientError) as e:
@@ -156,19 +153,22 @@ async def run_collect_async(start_date, end_date):
     # --- 2. 비동기 작업 실행 ---
     start_time = time.time()
 
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(50)
+    connector = aiohttp.TCPConnector(limit=100, limit_per_host=50, ttl_dns_cache=300)
 
-    async with aiohttp.ClientSession(cookies=cookies) as session:
+    async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
         tasks = [search_flight_async(session, semaphore, params) for params in tasks_params]
         results = await asyncio.gather(*tasks)
 
     elapsed = time.time() - start_time
 
     # --- 👇 [추가] 최종 결과 요약 로그 ---
-    saved_files = [r for r in results if isinstance(r, str)]
-    saved_count = len(saved_files)
-    success_count = sum(1 for r in results if isinstance(r, str))
+    collected_data = [r for r in results if r is not None]
+
+    success_count = len(collected_data)
     failure_count = len(tasks_params) - success_count
+
+    saved_count = len(collected_data)
 
     logger.info("=" * 50)
     logger.info("📊 전체 수집 결과 요약")
@@ -179,8 +179,10 @@ async def run_collect_async(start_date, end_date):
     logger.info(f"  - ⏱️ 총 소요 시간: {elapsed:.2f} 초")
     logger.info("=" * 50)
 
+    return collected_data
+
 # ---------------------------------- 실행
 if __name__ == "__main__":
     start_dt = datetime(2025, 10, 20).date()
-    end_dt = datetime(2025, 10, 20).date()
+    end_dt = datetime(2025, 10, 24).date()
     asyncio.run(run_collect_async(start_dt, end_dt))
