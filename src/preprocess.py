@@ -1,4 +1,4 @@
-# preprocess.py
+ # preprocess.py
 import os
 import json
 import glob
@@ -96,7 +96,10 @@ def _clean_and_transform_data(df: pd.DataFrame) -> pd.DataFrame:
 
     for col in ["carDesc", "opCarDesc", "opCarCode"]:
         if col in df.columns:
+            df[col] = df[col].astype(object)
+            df[col] = df[col].where(df[col].notna(), "")
             df[col] = df[col].astype(str).str.strip()
+            df[col] = df[col].replace({"nan": "", "None": "", "NaT": ""})
 
     mask_we = (df["carCode"] == "WE")
 
@@ -221,7 +224,12 @@ def run_preprocess(collected_data: list = None, save_csv=True):
             ]
             for col in str_cols:
                 if col in dfn.columns:
-                    dfn[col] = dfn[col].astype(str).str.strip()
+                    dfn[col] = dfn[col].fillna("").astype(str).str.strip()
+                    dfn[col] = dfn[col].replace({"nan": "", "None": "", "NaT": ""})
+
+            for col in str_cols:
+                if col in dfn.columns:
+                    dfn[col] = dfn[col].fillna("").astype(str).str.strip()
                     dfn[col] = dfn[col].replace({"nan": "", "None": "", "NaT": ""})
 
             # 4) 코드류 대문자 통일

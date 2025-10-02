@@ -73,6 +73,7 @@ def prepare_df_for_upload(df: pd.DataFrame) -> pd.DataFrame:
     for scol in str_cols:
         if scol in df.columns:
             df[scol] = df[scol].astype(str).str.strip()
+            df[scol] = df[scol].replace({'': None})
 
     # 3) 컬럼 순서 강제
     missing = [c for c in TARGET_COLUMNS if c not in df.columns]
@@ -141,11 +142,11 @@ def run_upload(df: pd.DataFrame, batch_size: int = 5000):
     logger.info("DB 업로드 완료")
 
 def run_upload_from_csv(csv_path: str, batch_size: int = 5000):
-    df = pd.read_csv(csv_path, encoding="utf-8-sig")
+    df = pd.read_csv(csv_path, encoding="utf-8-sig", keep_default_na=False)
     logger.info(f"✅ CSV 로드 완료: {len(df)}행 from {csv_path}")
     run_upload(df, batch_size=batch_size)
 
 
 if __name__ == "__main__":
-    run_upload_from_csv(PROCESSED_DIR/"preprocessing data.csv")
+    run_upload_from_csv(PROCESSED_DIR/"preprocessing_data.csv")
     pass
