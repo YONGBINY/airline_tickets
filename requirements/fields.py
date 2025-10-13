@@ -1,4 +1,4 @@
-# fields.py
+# requirements/fields.py
 FIELD_DESCRIPTIONS = {
     # --- 항공편 정보 ---
     "code": "항공편 코드",
